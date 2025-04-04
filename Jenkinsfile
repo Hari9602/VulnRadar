@@ -2,51 +2,55 @@ pipeline {
     agent any
 
     environment {
-        GITHUB_CREDENTIALS_ID = 'github-credentials'
-        REPO_URL = 'https://github.com/Hari9602/VulnRadar.git'
+        IMAGE_NAME = "vulnscanner"
+        GITHUB_USER = "hari9602"
+        GHCR_IMAGE = "ghcr.io/hari9602/vulnscanner:latest"
+        DOCKERHUB_CREDS = credentials('github-credentials')
     }
 
     stages {
         stage('Clone Repository') {
             steps {
-                git credentialsId: GITHUB_CREDENTIALS_ID, branch: 'main', url: REPO_URL
+                git credentialsId: 'github-credentials', url: 'https://github.com/Hari9602/VulnRadar.git', branch: 'main'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    sh 'docker build -t vulnscanner:latest .'
-                }
+                sh 'docker build -t vulnscanner:latest .'
             }
         }
 
-        stage('Run Container') {
+        stage('Tag Docker Image for GHCR') {
             steps {
-                script {
-                    sh 'docker run --name vulnscanner -d vulnscanner:latest'
-                }
+                sh 'docker tag ${IMAGE_NAME}:latest ${GHCR_IMAGE}'
             }
         }
 
-        stage('Push Docker Image to GitHub Container Registry') {
+        stage('Login to GHCR') {
             steps {
-                script {
-                    sh 'echo $GITHUB_PAT | docker login ghcr.io -u Hari9602 --password-stdin'
-                    sh 'docker tag vulnscanner ghcr.io/hari9602/vulnscanner:latest'
-                    sh 'docker push ghcr.io/hari9602/vulnscanner:latest'
-                }
+                sh 'echo ${DOCKERHUB_CREDS_PSW} | docker login ghcr.io -u ${DOCKERHUB_CREDS_USR} --password-stdin'
             }
         }
 
-        stage('Cleanup') {
+        stage('Push Docker Image to GHCR') {
             steps {
-                script {
-                    sh 'docker stop vulnscanner || true'
-                    sh 'docker rm vulnscanner || true'
-                    sh 'docker rmi vulnscanner:latest || true'
-                }
+                sh 'docker push ${GHCR_IMAGE}'
             }
+        }
+
+        stage('Run Docker Container') {
+            steps {
+                sh 'docker run --rm ${IMAGE_NAME}:latest'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh 'docker rmi ${IMAGE_NAME}:latest || true'
+            sh 'docker rmi ${GHCR_IMAGE} || true'
         }
     }
 }
